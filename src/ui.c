@@ -6,10 +6,15 @@
 #include <ctype.h>
 
 /* color pairs */
-#define CP_NORMAL   1
-#define CP_SELECTED 2
-#define CP_FAV      3
-#define CP_DESC     4
+#define CP_NORMAL    1
+#define CP_SELECTED  2
+#define CP_FAV       3
+#define CP_DESC      4
+#define CP_TAB       5
+#define CP_TAB_ACTIVE 6
+
+/* view mode comes from main via globals */
+extern int current_view; /* 1 = ALL, 2 = FAV */
 
 void ui_init_colors(void) {
     if (!has_colors()) return;
@@ -17,31 +22,72 @@ void ui_init_colors(void) {
     start_color();
     use_default_colors();
 
-    init_pair(CP_NORMAL,   COLOR_WHITE,  -1);
-    init_pair(CP_SELECTED, COLOR_BLACK,  COLOR_CYAN);
-    init_pair(CP_FAV,      COLOR_YELLOW, -1);
-    init_pair(CP_DESC,     COLOR_CYAN,   -1);
+    init_pair(CP_NORMAL,     COLOR_WHITE,  -1);
+    init_pair(CP_SELECTED,   COLOR_BLACK,  COLOR_CYAN);
+    init_pair(CP_FAV,        COLOR_YELLOW, -1);
+    init_pair(CP_DESC,       COLOR_CYAN,   -1);
+    init_pair(CP_TAB,        COLOR_WHITE,  -1);
+    init_pair(CP_TAB_ACTIVE, COLOR_BLACK,  COLOR_GREEN);
 }
 
+/* =========================
+ * DRAW TABS
+ * ========================= */
+static void draw_tabs(void) {
+    int w = getmaxx(stdscr);
+
+    attron(A_BOLD);
+    mvhline(0, 0, ' ', w);
+
+    if (current_view == 1)
+        attron(COLOR_PAIR(CP_TAB_ACTIVE));
+    else
+        attron(COLOR_PAIR(CP_TAB));
+
+    mvprintw(0, 2, "[1] ALL");
+
+    attroff(COLOR_PAIR(CP_TAB_ACTIVE));
+    attroff(COLOR_PAIR(CP_TAB));
+
+    if (current_view == 2)
+        attron(COLOR_PAIR(CP_TAB_ACTIVE));
+    else
+        attron(COLOR_PAIR(CP_TAB));
+
+    mvprintw(0, 12, "[2] FAV");
+
+    attroff(COLOR_PAIR(CP_TAB_ACTIVE));
+    attroff(COLOR_PAIR(CP_TAB));
+    attroff(A_BOLD);
+}
+
+/* =========================
+ * MAIN UI
+ * ========================= */
 void draw_ui(int selected, int offset, const char *desc) {
     clear();
 
     int h, w;
     getmaxyx(stdscr, h, w);
 
+    /* draw tabs */
+    draw_tabs();
+
+    int list_top = 2;
     int left_w = w / 3;
     int right_x = left_w + 1;
 
-    /* separator */
-    for (int y = 0; y < h - 1; y++)
+    /* vertical separator */
+    for (int y = list_top; y < h - 1; y++)
         mvaddch(y, left_w, ACS_VLINE);
 
     /* left panel */
-    for (int i = 0; i < h - 2; i++) {
+    for (int i = 0; i < h - list_top - 1; i++) {
         int v = offset + i;
         if (v >= visible_count) break;
 
         int idx = visible[v];
+        int y = list_top + i;
 
         if (v == selected)
             attron(COLOR_PAIR(CP_SELECTED));
@@ -50,7 +96,7 @@ void draw_ui(int selected, int offset, const char *desc) {
         else
             attron(COLOR_PAIR(CP_NORMAL));
 
-        mvprintw(i, 1, "%-18s %s",
+        mvprintw(y, 1, "%-18s %s",
                  cmds[idx].name,
                  cmds[idx].favorite ? "★" : " ");
 
@@ -61,10 +107,10 @@ void draw_ui(int selected, int offset, const char *desc) {
 
     /* right panel */
     attron(COLOR_PAIR(CP_DESC));
-    mvprintw(0, right_x + 1, "Description");
+    mvprintw(list_top, right_x + 1, "Description");
     attroff(COLOR_PAIR(CP_DESC));
 
-    int y = 2;
+    int y = list_top + 2;
     if (desc) {
         const char *p = desc;
         while (*p && y < h - 1) {
@@ -81,14 +127,20 @@ void draw_ui(int selected, int offset, const char *desc) {
         }
     }
 
+    /* footer */
     attron(A_DIM);
-    mvprintw(h - 1, 1,
-             "↑↓ move   / search   f fav   Enter run   q quit");
+    mvprintw(
+        h - 1, 1,
+        "[↑↓] move   [/] search   [f]av   [d]esc   [q]uit"
+    );
     attroff(A_DIM);
 
     refresh();
 }
 
+/* =========================
+ * SEARCH PROMPT
+ * ========================= */
 void draw_search(const char *query) {
     int h, w;
     getmaxyx(stdscr, h, w);
@@ -101,6 +153,9 @@ void draw_search(const char *query) {
     refresh();
 }
 
+/* =========================
+ * EXECUTE DIALOG
+ * ========================= */
 int draw_execute_dialog(const char *cmd, char *args, int maxlen) {
     int h, w;
     getmaxyx(stdscr, h, w);
@@ -124,7 +179,7 @@ int draw_execute_dialog(const char *cmd, char *args, int maxlen) {
 
     int ch;
     while ((ch = wgetch(win))) {
-        if (ch == 27) { // ESC
+        if (ch == 27) {
             delwin(win);
             return 0;
         }

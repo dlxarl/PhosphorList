@@ -10,10 +10,20 @@
 #include "sort.h"
 #include "ui.h"
 
+/* =========================
+ * GLOBAL VIEW FOR UI (tabs)
+ * ========================= */
+int current_view = 1; /* 1 = ALL, 2 = FAV */
+
 typedef enum {
     MODE_NORMAL,
     MODE_SEARCH
 } Mode;
+
+typedef enum {
+    VIEW_ALL = 1,
+    VIEW_FAV = 2
+} ViewMode;
 
 /* =========================
  * DESCRIPTION CACHE
@@ -45,9 +55,22 @@ static void load_description_cached(int idx, char *out, size_t n) {
 }
 
 /* =========================
+ * BUILD VISIBLE LIST
+ * ========================= */
+static void rebuild_visible(ViewMode view) {
+    visible_count = 0;
+
+    for (int i = 0; i < cmd_count; i++) {
+        if (view == VIEW_FAV && !cmds[i].favorite)
+            continue;
+
+        visible[visible_count++] = i;
+    }
+}
+
+/* =========================
  * MAIN
  * ========================= */
-
 int main(void) {
     setlocale(LC_ALL, "");
 
@@ -68,12 +91,17 @@ int main(void) {
     /* ---------- state ---------- */
     int selected = 0;
     int offset = 0;
-    Mode mode = MODE_NORMAL;
     int dirty = 1;
+
+    Mode mode = MODE_NORMAL;
+    ViewMode view = VIEW_ALL;
+    current_view = view;
 
     char search[64] = {0};
     char args[128] = {0};
     char desc[MAX_DESC] = "Press 'd' to load description";
+
+    rebuild_visible(view);
 
     /* ---------- first draw ---------- */
     draw_ui(selected, offset, desc);
@@ -85,13 +113,29 @@ int main(void) {
     while (1) {
         ch = getch();
 
-        /* GLOBAL EXIT */
+        /* global exit */
         if (ch == 'q')
             break;
 
         if (mode == MODE_NORMAL) {
 
-            if (ch == '/') {
+            /* ----- tabs ----- */
+            if (ch == '1') {
+                view = VIEW_ALL;
+                current_view = view;
+                rebuild_visible(view);
+                selected = offset = 0;
+                dirty = 1;
+            }
+            else if (ch == '2') {
+                view = VIEW_FAV;
+                current_view = view;
+                rebuild_visible(view);
+                selected = offset = 0;
+                dirty = 1;
+            }
+
+            else if (ch == '/') {
                 mode = MODE_SEARCH;
                 search[0] = 0;
                 dirty = 1;
@@ -108,6 +152,9 @@ int main(void) {
                 int idx = visible[selected];
                 cmds[idx].favorite ^= 1;
                 save_favorites();
+                rebuild_visible(view);
+                if (selected >= visible_count)
+                    selected = visible_count - 1;
                 dirty = 1;
             }
             else if (ch == 'd' && visible_count > 0) {
@@ -162,7 +209,7 @@ int main(void) {
                 dirty = 1;
             }
             else if (ch == 27) { /* ESC */
-                clear_filter();
+                rebuild_visible(view);
                 mode = MODE_NORMAL;
                 dirty = 1;
             }
@@ -191,12 +238,12 @@ int main(void) {
             offset = selected;
             dirty = 1;
         }
-        else if (selected >= offset + h - 2) {
-            offset = selected - (h - 3);
+        else if (selected >= offset + h - 3) {
+            offset = selected - (h - 4);
             dirty = 1;
         }
 
-        /* ---------- redraw only if needed ---------- */
+        /* ---------- redraw ---------- */
         if (dirty) {
             draw_ui(selected, offset, desc);
             if (mode == MODE_SEARCH)
