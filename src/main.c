@@ -1,6 +1,6 @@
 #include <ncurses.h>
 #include <stdlib.h>
-
+#include <locale.h>
 #include "commands.h"
 #include "favorites.h"
 #include "sort.h"
@@ -9,6 +9,9 @@
 int main(void) {
     // ---------- load data ----------
     load_commands();
+
+    // ---------- enable UTF-8 locale ----------
+    setlocale(LC_ALL, "");
 
     // ---------- ncurses init ----------
     initscr();
