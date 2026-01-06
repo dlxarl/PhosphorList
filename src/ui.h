@@ -1,8 +1,15 @@
 #pragma once
 
-void draw_ui(int selected, int offset);
+/* init */
+void ui_init_colors(void);
+
+/* main split ui */
+void draw_ui(int selected, int offset, const char *desc);
+
+/* search prompt */
 void draw_search(const char *query);
 
-/* returns 1 = execute, 0 = cancel */
+/* execute dialog
+ * return 1 = execute, 0 = cancel
+ */
 int draw_execute_dialog(const char *cmd, char *args, int maxlen);
-

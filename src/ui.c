@@ -2,15 +2,41 @@
 #include "commands.h"
 
 #include <ncurses.h>
-#include <ctype.h>
 #include <string.h>
+#include <ctype.h>
 
-void draw_ui(int selected, int offset) {
+/* color pairs */
+#define CP_NORMAL   1
+#define CP_SELECTED 2
+#define CP_FAV      3
+#define CP_DESC     4
+
+void ui_init_colors(void) {
+    if (!has_colors()) return;
+
+    start_color();
+    use_default_colors();
+
+    init_pair(CP_NORMAL,   COLOR_WHITE,  -1);
+    init_pair(CP_SELECTED, COLOR_BLACK,  COLOR_CYAN);
+    init_pair(CP_FAV,      COLOR_YELLOW, -1);
+    init_pair(CP_DESC,     COLOR_CYAN,   -1);
+}
+
+void draw_ui(int selected, int offset, const char *desc) {
     clear();
 
     int h, w;
     getmaxyx(stdscr, h, w);
 
+    int left_w = w / 3;
+    int right_x = left_w + 1;
+
+    /* separator */
+    for (int y = 0; y < h - 1; y++)
+        mvaddch(y, left_w, ACS_VLINE);
+
+    /* left panel */
     for (int i = 0; i < h - 2; i++) {
         int v = offset + i;
         if (v >= visible_count) break;
@@ -18,27 +44,59 @@ void draw_ui(int selected, int offset) {
         int idx = visible[v];
 
         if (v == selected)
-            attron(A_REVERSE);
+            attron(COLOR_PAIR(CP_SELECTED));
+        else if (cmds[idx].favorite)
+            attron(COLOR_PAIR(CP_FAV));
+        else
+            attron(COLOR_PAIR(CP_NORMAL));
 
-        mvprintw(
-            i, 1,
-            "%-20s %s",
-            cmds[idx].name,
-            cmds[idx].favorite ? "★" : " "
-        );
+        mvprintw(i, 1, "%-18s %s",
+                 cmds[idx].name,
+                 cmds[idx].favorite ? "★" : " ");
 
-        if (v == selected)
-            attroff(A_REVERSE);
+        attroff(COLOR_PAIR(CP_SELECTED));
+        attroff(COLOR_PAIR(CP_FAV));
+        attroff(COLOR_PAIR(CP_NORMAL));
     }
 
-    mvprintw(h - 1, 1, "↑↓ move  / search  f fav  Enter run  q quit");
+    /* right panel */
+    attron(COLOR_PAIR(CP_DESC));
+    mvprintw(0, right_x + 1, "Description");
+    attroff(COLOR_PAIR(CP_DESC));
+
+    int y = 2;
+    if (desc) {
+        const char *p = desc;
+        while (*p && y < h - 1) {
+            char line[256];
+            int len = 0;
+
+            while (*p && *p != '\n' && len < (w - right_x - 3))
+                line[len++] = *p++;
+
+            line[len] = 0;
+            mvprintw(y++, right_x + 1, "%s", line);
+
+            if (*p == '\n') p++;
+        }
+    }
+
+    attron(A_DIM);
+    mvprintw(h - 1, 1,
+             "↑↓ move   / search   f fav   Enter run   q quit");
+    attroff(A_DIM);
+
     refresh();
 }
 
 void draw_search(const char *query) {
     int h, w;
     getmaxyx(stdscr, h, w);
+
+    attron(A_BOLD);
     mvprintw(h - 1, 1, "/%s", query);
+    attroff(A_BOLD);
+
     clrtoeol();
     refresh();
 }
@@ -47,16 +105,18 @@ int draw_execute_dialog(const char *cmd, char *args, int maxlen) {
     int h, w;
     getmaxyx(stdscr, h, w);
 
-    int dh = 7, dw = w / 2;
+    int dh = 7;
+    int dw = w / 2;
     int y = (h - dh) / 2;
     int x = (w - dw) / 2;
 
     WINDOW *win = newwin(dh, dw, y, x);
+    keypad(win, TRUE);
     box(win, 0, 0);
 
     mvwprintw(win, 1, 2, "Execute command:");
     mvwprintw(win, 2, 2, "%s", cmd);
-    mvwprintw(win, 4, 2, "Args: ");
+    mvwprintw(win, 4, 2, "Args:");
     mvwprintw(win, 5, 2, "[ Enter = Execute ]   [ Esc = Cancel ]");
 
     int len = strlen(args);
@@ -74,7 +134,8 @@ int draw_execute_dialog(const char *cmd, char *args, int maxlen) {
         }
         if ((ch == KEY_BACKSPACE || ch == 127) && len > 0) {
             args[--len] = 0;
-        } else if (isprint(ch) && len < maxlen - 1) {
+        }
+        else if (isprint(ch) && len < maxlen - 1) {
             args[len++] = ch;
             args[len] = 0;
         }
