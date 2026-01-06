@@ -11,5 +11,9 @@ typedef struct {
 extern Command cmds[MAX_CMDS];
 extern int cmd_count;
 
-void load_commands(void);
+extern int visible[MAX_CMDS];
+extern int visible_count;
 
+void load_commands(void);
+void clear_filter(void);
+void apply_filter(const char *query);
