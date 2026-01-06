@@ -14,7 +14,7 @@
 #define CP_TAB_ACTIVE 6
 
 /* view mode comes from main via globals */
-extern int current_view; /* 1 = ALL, 2 = FAV */
+extern int current_view;
 
 void ui_init_colors(void) {
     if (!has_colors()) return;
@@ -39,22 +39,39 @@ static void draw_tabs(void) {
     attron(A_BOLD);
     mvhline(0, 0, ' ', w);
 
+    int x = 2;
+
+    /* [1] ALL */
     if (current_view == 1)
         attron(COLOR_PAIR(CP_TAB_ACTIVE));
     else
         attron(COLOR_PAIR(CP_TAB));
 
-    mvprintw(0, 2, "[1] ALL");
+    mvprintw(0, x, "[1] ALL");
+    x += 8;
 
     attroff(COLOR_PAIR(CP_TAB_ACTIVE));
     attroff(COLOR_PAIR(CP_TAB));
 
+    /* [2] FAV */
     if (current_view == 2)
         attron(COLOR_PAIR(CP_TAB_ACTIVE));
     else
         attron(COLOR_PAIR(CP_TAB));
 
-    mvprintw(0, 12, "[2] FAV");
+    mvprintw(0, x, "[2] FAV");
+    x += 8;
+
+    attroff(COLOR_PAIR(CP_TAB_ACTIVE));
+    attroff(COLOR_PAIR(CP_TAB));
+
+    /* [3] RECENT */
+    if (current_view == 3)
+        attron(COLOR_PAIR(CP_TAB_ACTIVE));
+    else
+        attron(COLOR_PAIR(CP_TAB));
+
+    mvprintw(0, x, "[3] RECENT");
 
     attroff(COLOR_PAIR(CP_TAB_ACTIVE));
     attroff(COLOR_PAIR(CP_TAB));

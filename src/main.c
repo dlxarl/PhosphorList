@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <sys/stat.h>
 
 #include "commands.h"
 #include "favorites.h"
@@ -13,7 +14,7 @@
 /* =========================
  * GLOBAL VIEW FOR UI (tabs)
  * ========================= */
-int current_view = 1; /* 1 = ALL, 2 = FAV */
+int current_view = 1; /* 1 = ALL, 2 = FAV, 3 = RECENT */
 
 typedef enum {
     MODE_NORMAL,
@@ -21,8 +22,9 @@ typedef enum {
 } Mode;
 
 typedef enum {
-    VIEW_ALL = 1,
-    VIEW_FAV = 2
+    VIEW_ALL    = 1,
+    VIEW_FAV    = 2,
+    VIEW_RECENT = 3
 } ViewMode;
 
 /* =========================
@@ -55,15 +57,96 @@ static void load_description_cached(int idx, char *out, size_t n) {
 }
 
 /* =========================
+ * RECENT COMMANDS (PERSISTENT)
+ * ========================= */
+
+#define MAX_RECENT 32
+#define RECENT_FILE ".config/cmdtui/recent.txt"
+
+static int recent[MAX_RECENT];
+static int recent_count = 0;
+
+static void ensure_recent_dir(void) {
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/.config/cmdtui", getenv("HOME"));
+    mkdir(dir, 0755);
+}
+
+static void load_recent(void) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", getenv("HOME"), RECENT_FILE);
+
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return;
+
+    char line[256];
+    while (fgets(line, sizeof(line), f) && recent_count < MAX_RECENT) {
+        line[strcspn(line, "\n")] = 0;
+
+        for (int i = 0; i < cmd_count; i++) {
+            if (strcmp(cmds[i].name, line) == 0) {
+                recent[recent_count++] = i;
+                break;
+            }
+        }
+    }
+
+    fclose(f);
+}
+
+static void save_recent(void) {
+    ensure_recent_dir();
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", getenv("HOME"), RECENT_FILE);
+
+    FILE *f = fopen(path, "w");
+    if (!f)
+        return;
+
+    for (int i = 0; i < recent_count; i++)
+        fprintf(f, "%s\n", cmds[recent[i]].name);
+
+    fclose(f);
+}
+
+static void add_recent(int idx) {
+    for (int i = 0; i < recent_count; i++) {
+        if (recent[i] == idx) {
+            memmove(&recent[i], &recent[i + 1],
+                    (recent_count - i - 1) * sizeof(int));
+            recent_count--;
+            break;
+        }
+    }
+
+    if (recent_count < MAX_RECENT) {
+        memmove(&recent[1], &recent[0],
+                recent_count * sizeof(int));
+        recent[0] = idx;
+        recent_count++;
+    }
+
+    save_recent();
+}
+
+/* =========================
  * BUILD VISIBLE LIST
  * ========================= */
+
 static void rebuild_visible(ViewMode view) {
     visible_count = 0;
+
+    if (view == VIEW_RECENT) {
+        for (int i = 0; i < recent_count; i++)
+            visible[visible_count++] = recent[i];
+        return;
+    }
 
     for (int i = 0; i < cmd_count; i++) {
         if (view == VIEW_FAV && !cmds[i].favorite)
             continue;
-
         visible[visible_count++] = i;
     }
 }
@@ -71,14 +154,16 @@ static void rebuild_visible(ViewMode view) {
 /* =========================
  * MAIN
  * ========================= */
+
 int main(void) {
     setlocale(LC_ALL, "");
 
-    /* ---------- load commands ---------- */
     load_commands();
     qsort(cmds, cmd_count, sizeof(Command), cmp_normal);
 
-    /* ---------- ncurses init ---------- */
+    load_recent();
+
+    /* ---------- ncurses ---------- */
     initscr();
     cbreak();
     noecho();
@@ -102,8 +187,6 @@ int main(void) {
     char desc[MAX_DESC] = "Press 'd' to load description";
 
     rebuild_visible(view);
-
-    /* ---------- first draw ---------- */
     draw_ui(selected, offset, desc);
 
     /* =========================
@@ -113,7 +196,6 @@ int main(void) {
     while (1) {
         ch = getch();
 
-        /* global exit */
         if (ch == 'q')
             break;
 
@@ -129,6 +211,13 @@ int main(void) {
             }
             else if (ch == '2') {
                 view = VIEW_FAV;
+                current_view = view;
+                rebuild_visible(view);
+                selected = offset = 0;
+                dirty = 1;
+            }
+            else if (ch == '3') {
+                view = VIEW_RECENT;
                 current_view = view;
                 rebuild_visible(view);
                 selected = offset = 0;
@@ -175,6 +264,8 @@ int main(void) {
                         sizeof(args)
                     )) {
 
+                    add_recent(idx);
+
                     endwin();
 
                     char cmdline[512];
@@ -188,7 +279,6 @@ int main(void) {
 
                     system(cmdline);
 
-                    /* restore ncurses */
                     initscr();
                     cbreak();
                     noecho();
@@ -196,6 +286,7 @@ int main(void) {
                     curs_set(0);
                     ui_init_colors();
 
+                    rebuild_visible(view);
                     dirty = 1;
                 }
             }
@@ -208,7 +299,7 @@ int main(void) {
                 mode = MODE_NORMAL;
                 dirty = 1;
             }
-            else if (ch == 27) { /* ESC */
+            else if (ch == 27) {
                 rebuild_visible(view);
                 mode = MODE_NORMAL;
                 dirty = 1;
@@ -243,7 +334,6 @@ int main(void) {
             dirty = 1;
         }
 
-        /* ---------- redraw ---------- */
         if (dirty) {
             draw_ui(selected, offset, desc);
             if (mode == MODE_SEARCH)
@@ -252,6 +342,7 @@ int main(void) {
         }
     }
 
+    save_recent();
     endwin();
     return 0;
 }
