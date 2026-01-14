@@ -1,5 +1,7 @@
 # PhosphorList
 
+![Screenshot](https://i.postimg.cc/W4YmXqDC/Screenshot-2026-01-07-at-11-05-51.png)
+
 A fast, keyboard-driven terminal user interface for browsing, searching, and launching installed CLI commands.
 Designed to be responsive, minimal, and scalable, inspired by tools like lazygit, fzf, and yazi.
 
